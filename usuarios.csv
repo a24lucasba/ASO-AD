@@ -1,0 +1,16 @@
+﻿Nombre,Apellidos,Usuario,Grupo,UsuarioBase
+Juan,Pérez,jperez,G-VENTAS,User-Ventas
+Ana,Gómez,agomez,G-INFORMATICOS,User-IT
+Luis,Ruiz,lruiz,G-RRHH,User-RRHH
+Marta,López,mlopez,G-CONTABILIDAD,User-Contabilidad
+Carlos,Sánchez,csanchez,G-JEFES,User-Jefes
+Laura,Martín,lmartin,G-VENTAS,User-Ventas
+Pedro,Navarro,pnavarro,G-INFORMATICOS,User-IT
+Elena,Torres,etorres,G-RRHH,User-RRHH
+Javier,Molina,jmolina,G-CONTABILIDAD,User-Contabilidad
+Sofía,Romero,sromero,G-JEFES,User-Jefes
+Diego,Herrera,dherrera,G-VENTAS,User-Ventas
+Natalia,Ortega,nortega,G-INFORMATICOS,User-IT
+Alberto,Cruz,acruz,G-CONTABILIDAD,User-Contabilidad
+Patricia,Vega,pvega,G-RRHH,User-RRHH
+Ricardo,Fuentes,rfuentes,G-JEFES,User-Jefes
