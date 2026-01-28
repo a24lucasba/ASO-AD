@@ -7,7 +7,7 @@
 $jerarquiaGrupos = @(
     @{Nombre="G-USUARIOS";      OU="USUARIOS";    Padre=$null},
     @{Nombre="G-JEFES";         OU="JEFES";       Padre="G-USUARIOS"},
-    @{Nombre="G-EMPLEADO";      OU="EMPLEADOS";   Padre="G-USUARIOS"},
+    @{Nombre="G-EMPLEADOS";      OU="EMPLEADOS";   Padre="G-USUARIOS"},
     @{Nombre="G-INFORMATICOS";  OU="INFORMATICOS";Padre="G-USUARIOS"},
     @{Nombre="G-VENTAS";        OU="VENTAS";      Padre="G-EMPLEADO"},
     @{Nombre="G-CONTABILIDAD";  OU="CONTABILIDAD";Padre="G-EMPLEADO"},

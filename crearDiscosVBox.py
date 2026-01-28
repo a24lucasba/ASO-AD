@@ -2,6 +2,8 @@
 #Script que agrega discos duros a VirtualBox
 #Se utiliza la herramienta VboxManage que puede ejecutar cualquier usuario del sistema
 
+# 5 de 500
+
 from subprocess import call
 
 ##Función ejecutaComando(comando)####
