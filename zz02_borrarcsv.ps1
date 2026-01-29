@@ -1,35 +1,57 @@
-# Importar el CSV
-$usuarios = Import-Csv -Path "usuarios.csv" -Delimiter ","
+# =================================================================
+# SCRIPT DE ELIMINACIÓN DE USUARIOS Y DIRECTORIOS DESDE CSV
+# =================================================================
 
-Write-Host "Iniciando proceso de borrado de usuarios..." -ForegroundColor Yellow
-Write-Host "------------------------------------------------"
+# Importamos el archivo CSV
+$usuarios = Import-Csv "usuarios.csv" -Delimiter ","
+
+# Configuración de ruta base (Debe ser la misma que la del script de creación)
+$basePathW = "W:" 
+
+# Mapeo de rutas relativas para localizar las carpetas
+$rutasRelativas = @{
+    "User-Jefes"         = "Personales\jefes"
+    "User-IT"           = "Personales\informaticos"
+    "User-Ventas"       = "Personales\empleados\ventas"
+    "User-Contabilidad" = "Personales\empleados\contabilidad"
+    "User-RRHH"         = "Personales\empleados\rrhh"
+}
 
 foreach ($fila in $usuarios) {
-    $usuarioABorrar = $fila.Usuario
+    $userCSV  = $fila.Usuario
+    $baseUser = $fila.UsuarioBase
 
-    # 1. Verificar si el usuario existe antes de intentar borrar
-    if (Get-LocalUser -Name $usuarioABorrar -ErrorAction SilentlyContinue) {
+    Write-Host "--- Eliminando: $userCSV ---" -ForegroundColor Yellow
+
+    # 1. Eliminar el usuario de Active Directory
+    if (Get-ADUser -Identity $userCSV -ErrorAction SilentlyContinue) {
         try {
-            # 2. Eliminar el usuario
-            Remove-LocalUser -Name $usuarioABorrar -Confirm:$false -ErrorAction Stop
-            
-            Write-Host "[-] Usuario [$usuarioABorrar] eliminado correctamente." -ForegroundColor Green
-            
-            # 3. Nota sobre el perfil (C:\Users\...)
-            # Remove-LocalUser borra la cuenta, pero a veces Windows mantiene la carpeta.
-            # El siguiente comando intenta limpiar el perfil del sistema.
-            $perfil = Get-WmiObject -Class Win32_UserProfile | Where-Object { $_.LocalPath -like "*\$usuarioABorrar" }
-            if ($perfil) {
-                $perfil.Delete()
-                Write-Host "    > Carpeta de perfil eliminada." -ForegroundColor Gray
-            }
-        } catch {
-            Write-Host " [!] Error al borrar [$usuarioABorrar]: $($_.Exception.Message)" -ForegroundColor Red
+            Remove-ADUser -Identity $userCSV -Confirm:$false -ErrorAction Stop
+            Write-Host "[+] Usuario $userCSV eliminado de AD." -ForegroundColor Green
+        }
+        catch {
+            Write-Warning "[-] No se pudo eliminar el usuario $userCSV de AD: $($_.Exception.Message)"
         }
     } else {
-        Write-Host " [?] El usuario [$usuarioABorrar] no existe o ya fue borrado." -ForegroundColor DarkGray
+        Write-Host "[!] El usuario $userCSV no existe en AD." -ForegroundColor Gray
+    }
+
+    # 2. Eliminar la carpeta personal (Home Directory)
+    $relPath = $rutasRelativas[$baseUser]
+    $folderPath = "$basePathW\$relPath\$userCSV"
+
+    if (Test-Path $folderPath) {
+        try {
+            # Borra la carpeta y todo su contenido (-Recurse) de forma forzada (-Force)
+            Remove-Item -Path $folderPath -Recurse -Force -ErrorAction Stop
+            Write-Host "[+] Carpeta $folderPath eliminada." -ForegroundColor Green
+        }
+        catch {
+            Write-Warning "[-] Error al borrar la carpeta $folderPath : $($_.Exception.Message)"
+        }
+    } else {
+        Write-Host "[!] No se encontró la carpeta en $folderPath" -ForegroundColor Gray
     }
 }
 
-Write-Host "------------------------------------------------"
-Write-Host "Proceso de limpieza finalizado." -ForegroundColor Cyan
+Write-Host "`nProceso de limpieza finalizado." -ForegroundColor White -BackgroundColor DarkGreen

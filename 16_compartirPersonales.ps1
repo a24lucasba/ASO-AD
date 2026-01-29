@@ -1,6 +1,7 @@
 # 1. Configuración de Rutas
 $rutaBase = "W:\"
 
+
 # 2. Definición de los Shares (Relativa -> Nombre del Recurso)
 $recursosCompartidos = @{
     "datos\empleados\ventas"    = "ventas"
@@ -29,7 +30,7 @@ foreach ($relativa in $recursosCompartidos.Keys) {
     if (Test-Path -Path $rutaCompleta) {
         if (-not (Get-SmbShare -Name $nombreShare -ErrorAction SilentlyContinue)) {
             try {
-                New-SmbShare -Name $nombreShare -Path $rutaCompleta -FullAccess "Todos" -ErrorAction Stop
+                New-SmbShare -Name $nombreShare -Path $rutaCompleta -ReadAccess "Todos" -ErrorAction Stop
                 Write-Host "EXITO: Compartido '$nombreShare' en $rutaCompleta" -ForegroundColor Green
             } catch {
                 Write-Host "ERROR al compartir $nombreShare : $($_.Exception.Message)" -ForegroundColor Red

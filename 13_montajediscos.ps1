@@ -1,44 +1,55 @@
-# 1. Identificar discos físicos
-$disks = Get-PhysicalDisk -CanPool $True
+# 1. Identificar discos y separar HotSpare
+$allDisks = Get-PhysicalDisk -CanPool $True
+if ($allDisks.Count -lt 5) { 
+    Write-Warning "Tienes $($allDisks.Count) discos. Se recomienda un mínimo de 5."
+}
+
+$hotSpareDisk = $allDisks[0]
+$poolDisks = $allDisks | Where-Object { $_.DeviceId -ne $hotSpareDisk.DeviceId }
 $poolName = "CompanyDataPool"
 
 # 2. Crear el Storage Pool
-Write-Host "Creando Storage Pool: $poolName..." -ForegroundColor Cyan
-New-StoragePool -FriendlyName $poolName -StorageSubsystemFriendlyName "Windows Storage*" -PhysicalDisks $disks
+Write-Host "Creando Storage Pool..." -ForegroundColor Cyan
+New-StoragePool -FriendlyName $poolName -StorageSubsystemFriendlyName "Windows Storage*" -PhysicalDisks $poolDisks
 
-# 3. Crear el Disco VIRTUAL SECURE (Parity)
-Write-Host "Creando disco SECURE (1.2TB - Parity)..." -ForegroundColor Blue
-$vDiskSecure = New-VirtualDisk -StoragePoolFriendlyName $poolName `
-    -FriendlyName "Secure" `
-    -Size 1.2TB `
-    -ResiliencySettingName Parity `
-    -ProvisioningType Fixed `
-    -WriteCacheSize 0
+# 3. Configurar el Hot Spare
+Add-PhysicalDisk -StoragePoolFriendlyName $poolName -PhysicalDisks $hotSpareDisk -Usage HotSpare
+Write-Host "Disco $($hotSpareDisk.DeviceId) configurado como Hot Spare." -ForegroundColor Yellow
 
-# 4. Crear el Disco VIRTUAL RAPID (Simple)
-Write-Host "Creando disco RAPID (400GB - Simple)..." -ForegroundColor Blue
+# --- CAMBIO DE ESTRATEGIA: Primero el pequeño, luego el máximo ---
+
+# 4. Crear el Disco VIRTUAL RAPID (400GB - Simple)
+Write-Host "Creando disco RAPID (400GB)..." -ForegroundColor Blue
 $vDiskRapid = New-VirtualDisk -StoragePoolFriendlyName $poolName `
     -FriendlyName "Rapid" `
     -Size 400GB `
     -ResiliencySettingName Simple `
-    -ProvisioningType Fixed `
-    -WriteCacheSize 0
+    -NumberOfColumns 1 `
+    -ProvisioningType Fixed
 
-# 5. Inicializar y Formatear con letras específicas
-Write-Host "Configurando volúmenes con letras W y V..." -ForegroundColor Green
+# 5. Crear el Disco VIRTUAL SECURE (El RESTO del espacio - Parity)
+Write-Host "Creando disco SECURE (Máximo espacio restante - Parity)..." -ForegroundColor Blue
+# AQUÍ ESTÁ EL TRUCO: Eliminamos el parámetro -Size por completo
+$vDiskSecure = New-VirtualDisk -StoragePoolFriendlyName $poolName `
+    -FriendlyName "Secure" `
+    -UseMaximumSize `
+    -ResiliencySettingName Parity `
+    -NumberOfColumns 3 `
+    -ProvisioningType Fixed
 
-# Configurar Secure -> Letra W
-$vDiskSecure | Get-Disk | Initialize-Disk -PartitionStyle GPT -PassThru | `
-    New-Partition -DriveLetter W -UseMaximumSize | `
-    Format-Volume -FileSystem NTFS -NewFileSystemLabel "Secure_Data" -Confirm:$false
+# 6. Inicializar y Formatear
+Write-Host "Configurando volúmenes..." -ForegroundColor Green
 
-# Configurar Rapid -> Letra V
-$vDiskRapid | Get-Disk | Initialize-Disk -PartitionStyle GPT -PassThru | `
-    New-Partition -DriveLetter V -UseMaximumSize | `
-    Format-Volume -FileSystem NTFS -NewFileSystemLabel "Rapid_Temp" -Confirm:$false
+if ($null -ne $vDiskRapid) {
+    $vDiskRapid | Get-Disk | Initialize-Disk -PartitionStyle GPT -PassThru | `
+        New-Partition -DriveLetter V -UseMaximumSize | `
+        Format-Volume -FileSystem NTFS -NewFileSystemLabel "Rapid_Temp" -Confirm:$false
+}
+
+if ($null -ne $vDiskSecure) {
+    $vDiskSecure | Get-Disk | Initialize-Disk -PartitionStyle GPT -PassThru | `
+        New-Partition -DriveLetter W -UseMaximumSize | `
+        Format-Volume -FileSystem NTFS -NewFileSystemLabel "Secure_Data" -Confirm:$false
+}
 
 Write-Host "¡Proceso finalizado!" -ForegroundColor White -BackgroundColor DarkGreen
-
-# Resumen final
-Get-VirtualDisk | Select-Object FriendlyName, Size, HealthStatus
-Get-Volume | Where-Object { $_.DriveLetter -in 'W','V' } | Select-Object DriveLetter, FileSystemLabel, Size

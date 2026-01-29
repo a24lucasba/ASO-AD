@@ -11,7 +11,7 @@ $configuracion = @(
 )
 
 $grupoGeneral   = "G-USUARIOS"
-$grupoEmpleados  = "G-EMPLEADOS"
+$grupoEmpleados  = "G-EMPLEADO"
 $loginScript    = "abrir_aviso.bat"
 $password       = ConvertTo-SecureString "abc123.." -AsPlainText -Force
 
