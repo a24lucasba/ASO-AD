@@ -1,53 +1,83 @@
 # =================================================================
-# SCRIPT DE CREACIÓN DE USUARIOS - VERSIÓN FINAL CORREGIDA (W:)
+# SCRIPT OPTIMIZADO: RUTA UNC Y ASIGNACIÓN DE PROPIETARIO
 # =================================================================
 
 $configuracion = @(
-    @{Grupo = "G-JEFES";        OU = "JEFES";        User = "User-Jefes";        RelPath = "Personales\jefes"}
-    @{Grupo = "G-INFORMATICOS"; OU = "INFORMATICOS"; User = "User-IT";           RelPath = "Personales\informaticos"}
-    @{Grupo = "G-VENTAS";       OU = "VENTAS";       User = "User-Ventas";       RelPath = "Personales\empleados\ventas"}
-    @{Grupo = "G-CONTABILIDAD"; OU = "CONTABILIDAD"; User = "User-Contabilidad"; RelPath = "Personales\empleados\contabilidad"}
-    @{Grupo = "G-RRHH";         OU = "RRHH";         User = "User-RRHH";         RelPath = "Personales\empleados\rrhh"}
+    @{Grupo = "G-JEFES";         OU = "JEFES";         User = "User-Jefes";          RelPath = "jefes";          EsJefe = $true}
+    @{Grupo = "G-INFORMATICOS";  OU = "INFORMATICOS";  User = "User-IT";             RelPath = "informaticos";   EsJefe = $false}
+    @{Grupo = "G-VENTAS";        OU = "VENTAS";        User = "User-Ventas";         RelPath = "empleados\ventas"; EsJefe = $false}
+    @{Grupo = "G-CONTABILIDAD";  OU = "CONTABILIDAD";  User = "User-Contabilidad";   RelPath = "empleados\contabilidad"; EsJefe = $false}
+    @{Grupo = "G-RRHH";          OU = "RRHH";          User = "User-RRHH";           RelPath = "empleados\rrhh"; EsJefe = $false}
 )
 
-$grupoGeneral   = "G-USUARIOS"
-$grupoEmpleados  = "G-EMPLEADO"
-$loginScript    = "abrir_aviso.bat"
-$password       = ConvertTo-SecureString "abc123.." -AsPlainText -Force
+$loginScript     = "abrir_aviso.bat"
+$password        = ConvertTo-SecureString "abc123.." -AsPlainText -Force
+# Cambiamos W:\ por la ruta UNC directa
+$basePath        = "\\DNSSERVER\datos$" 
+$profileServer   = "\\DNSSERVER\perfiles$"
 
 foreach ($item in $configuracion) {
-    $nombreUser = $item.User
-    $ouName     = $item.OU
-    # Construimos la ruta para la carpeta particular en W:
-    $homeDir    = "W:\$($item.RelPath)\$nombreUser"
+    $u = $item.User
+    $ouName = $item.OU
+    # La ruta final será: \\DNSSERVER\datos$\ruta\usuario
+    $homePath = Join-Path $basePath "$($item.RelPath)\$u"
+    
+    $profilePath = $null
+    if ($item.EsJefe) { $profilePath = "$profileServer\$u" }
 
     $targetOU = Get-ADOrganizationalUnit -Filter "Name -eq '$ouName'"
 
     if ($targetOU) {
         try {
-            Write-Host "--- Procesando: $nombreUser ---" -ForegroundColor Cyan
+            Write-Host "--- Procesando: $u ---" -ForegroundColor Cyan
             
-            # Se crea el usuario en una sola línea de comando para evitar errores de sintaxis
-            New-ADUser -Name $nombreUser -SamAccountName $nombreUser -DisplayName "Usuario Base $ouName" -Enabled $true -AccountPassword $password -ChangePasswordAtLogon $true -Path $targetOU.DistinguishedName -ScriptPath $loginScript -HomeDirectory $homeDir -HomeDrive "H:" -ErrorAction Stop
-
-            # 1. Asignar grupo específico
-            Add-ADGroupMember -Identity $item.Grupo -Members $nombreUser
-            Write-Host "[+] Grupo: $($item.Grupo)" -ForegroundColor Gray
-
-            # 2. Asignar a G-EMPLEADOS si corresponde
-            if ($ouName -in @("VENTAS", "CONTABILIDAD", "RRHH")) {
-                Add-ADGroupMember -Identity $grupoEmpleados -Members $nombreUser
-                Write-Host "[+] Grupo: $grupoEmpleados" -ForegroundColor Yellow
+            # 1. Crear el usuario en AD
+            $userParams = @{
+                Name                  = $u
+                SamAccountName        = $u
+                DisplayName           = "Usuario Base $ouName"
+                Path                  = $targetOU.DistinguishedName
+                Enabled               = $true
+                AccountPassword       = $password
+                ChangePasswordAtLogon = $true
+                HomeDrive             = "H:"
+                HomeDirectory         = $homePath
+                ScriptPath            = $loginScript
+                ErrorAction           = "Stop"
             }
 
-            # 3. Asignar a grupo general
-            Add-ADGroupMember -Identity $grupoGeneral -Members $nombreUser
-            Write-Host "[+] Grupo: $grupoGeneral" -ForegroundColor Gray
+            if ($profilePath) { $userParams.Add("ProfilePath", $profilePath) }
+
+            New-ADUser @userParams
+
+            # 2. Agregar al grupo
+            Add-ADGroupMember -Identity $item.Grupo -Members $u
+
+            # 3. Crear directorio Home si no existe
+            if (-not (Test-Path $homePath)) {
+                New-Item -Path $homePath -ItemType Directory -Force | Out-Null
+            }
+
+            # 4. Gestión de Permisos y Propiedad (Ownership)
+            # ---------------------------------------------------------
+            # Deshabilitar herencia y copiar permisos actuales
+            icacls $homePath /inheritance:d
             
-            Write-Host "¡Éxito: $nombreUser configurado en W:!" -ForegroundColor Green
+            # Quitar permisos de "Usuarios" genéricos si existieran
+            icacls $homePath /remove "Users"
+            
+            # Dar control total al usuario
+            icacls $homePath /grant "${u}:(OI)(CI)W"
+            
+            # CAMBIAR EL PROPIETARIO: El usuario debe ser el dueño
+            # /setowner cambia el propietario a nivel de sistema de archivos
+            icacls $homePath /setowner $u /T /C /L /Q
+
+            Write-Host "[+] Carpeta creada y propiedad asignada a $u" -ForegroundColor Green
+            Write-Host "¡Éxito: $u creado y vinculado!" -ForegroundColor Green
         }
         catch {
-            Write-Warning "Error con $nombreUser : $($_.Exception.Message)"
+            Write-Warning "Error con $u : $($_.Exception.Message)"
         }
     }
     else {

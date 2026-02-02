@@ -9,9 +9,9 @@ $jerarquiaGrupos = @(
     @{Nombre="G-JEFES";         OU="JEFES";       Padre="G-USUARIOS"},
     @{Nombre="G-EMPLEADOS";      OU="EMPLEADOS";   Padre="G-USUARIOS"},
     @{Nombre="G-INFORMATICOS";  OU="INFORMATICOS";Padre="G-USUARIOS"},
-    @{Nombre="G-VENTAS";        OU="VENTAS";      Padre="G-EMPLEADO"},
-    @{Nombre="G-CONTABILIDAD";  OU="CONTABILIDAD";Padre="G-EMPLEADO"},
-    @{Nombre="G-RRHH";          OU="RRHH";        Padre="G-EMPLEADO"}
+    @{Nombre="G-VENTAS";        OU="VENTAS";      Padre="G-EMPLEADOS"},
+    @{Nombre="G-CONTABILIDAD";  OU="CONTABILIDAD";Padre="G-EMPLEADOS"},
+    @{Nombre="G-RRHH";          OU="RRHH";        Padre="G-EMPLEADOS"}
 )
 
 foreach ($g in $jerarquiaGrupos) {

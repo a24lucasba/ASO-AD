@@ -8,7 +8,7 @@ $carpetas = @(
     "datos\empleados\rrhh",
     "datos\jefes",
     "datos\informaticos",
-    "sreuniones"
+    "perfiles"
 )
 
 # 3. Crear la ruta base si no existe

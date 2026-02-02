@@ -10,11 +10,11 @@ $basePathW = "W:"
 
 # Mapeo de rutas relativas para localizar las carpetas
 $rutasRelativas = @{
-    "User-Jefes"         = "Personales\jefes"
-    "User-IT"           = "Personales\informaticos"
-    "User-Ventas"       = "Personales\empleados\ventas"
-    "User-Contabilidad" = "Personales\empleados\contabilidad"
-    "User-RRHH"         = "Personales\empleados\rrhh"
+    "User-Jefes"         = "datos\jefes"
+    "User-IT"           = "datos\informaticos"
+    "User-Ventas"       = "datos\empleados\ventas"
+    "User-Contabilidad" = "datos\empleados\contabilidad"
+    "User-RRHH"         = "datos\empleados\rrhh"
 }
 
 foreach ($fila in $usuarios) {

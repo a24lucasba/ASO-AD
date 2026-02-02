@@ -1,81 +1,115 @@
 # =================================================================
-# SCRIPT DE CREACIÓN DE USUARIOS DESDE CSV - ACTIVE DIRECTORY
+# SCRIPT COMPLETO: IMPORTACIÓN CSV, CREACIÓN DE USUARIO, 
+# CARPETA PERSONAL Y ASIGNACIÓN DE PROPIETARIO
 # =================================================================
 
-# 1. Configuración de mapeo según el Grupo del CSV
-$mapeoConfig = @{
-    "G-JEFES"        = @{OU = "JEFES"; RelPath = "Personales\jefes" }
-    "G-INFORMATICOS" = @{OU = "INFORMATICOS"; RelPath = "Personales\informaticos" }
-    "G-VENTAS"       = @{OU = "VENTAS"; RelPath = "Personales\empleados\ventas" }
-    "G-CONTABILIDAD" = @{OU = "CONTABILIDAD"; RelPath = "Personales\empleados\contabilidad" }
-    "G-RRHH"         = @{OU = "RRHH"; RelPath = "Personales\empleados\rrhh" }
+# 1. Configuración de Mapeos
+$mapaConfig = @{
+    "User-Jefes"         = @{OU = "JEFES";         RelPath = "datos\jefes";           EsJefe = $true}
+    "User-IT"            = @{OU = "INFORMATICOS";  RelPath = "datos\informaticos";    EsJefe = $false}
+    "User-Ventas"        = @{OU = "VENTAS";        RelPath = "datos\empleados\ventas"; EsJefe = $false}
+    "User-Contabilidad"  = @{OU = "CONTABILIDAD";  RelPath = "datos\empleados\contabilidad"; EsJefe = $false}
+    "User-RRHH"          = @{OU = "RRHH";          RelPath = "datos\empleados\rrhh";   EsJefe = $false}
 }
 
-$grupoGeneral = "G-USUARIOS"
-$grupoEmpleados = "G-EMPLEADO"
-$loginScript = "abrir_aviso.bat"
-$password = ConvertTo-SecureString "abc123.." -AsPlainText -Force
+# 2. Variables de Entorno
+$csvPath       = "Z:\usuarios.csv"
+$loginScript   = "abrir_aviso.bat"
+$password      = ConvertTo-SecureString "abc123.." -AsPlainText -Force
+$basePath      = "W:\"               # Unidad donde se crearán las carpetas
+$profileServer = "\\dnsserver\perfiles$" # Ruta para perfiles móviles
 
-# 2. Importar el archivo CSV
-$usuariosCSV = Import-Csv -Path ".\usuarios.csv" -Delimiter ","
+Write-Host "--- Iniciando Importación Masiva ---" -ForegroundColor White
 
-foreach ($usuario in $usuariosCSV) {
-    $samAccountName = $usuario.Usuario
-    $nombreCompleto = "$($usuario.Nombre) $($usuario.Apellidos)"
-    $grupoCSV = $usuario.Grupo
-    
-    # Obtener configuración específica según el grupo
-    $config = $mapeoConfig[$grupoCSV]
+# 3. Procesamiento del CSV
+if (Test-Path $csvPath) {
+    $usuariosCSV = Import-Csv -Path $csvPath -Delimiter ","
 
-    if ($config) {
-        $ouName = $config.OU
-        $homeDir = "W:\$($config.RelPath)\$samAccountName"
-        $targetOU = Get-ADOrganizationalUnit -Filter "Name -eq '$ouName'"
+    foreach ($linea in $usuariosCSV) {
+        $n    = $linea.Nombre
+        $a    = $linea.Apellidos
+        $u    = $linea.Usuario
+        $g    = $linea.Grupo
+        $base = $linea.UsuarioBase
 
-        if ($targetOU) {
-            try {
-                Write-Host "--- Procesando: $nombreCompleto ($samAccountName) ---" -ForegroundColor Cyan
-                
-                # Crear el usuario
-                New-ADUser -Name $samAccountName `
-                    -SamAccountName $samAccountName `
-                    -DisplayName $nombreCompleto `
-                    -GivenName $usuario.Nombre `
-                    -Surname $usuario.Apellidos `
-                    -Enabled $true `
-                    -AccountPassword $password `
-                    -ChangePasswordAtLogon $true `
-                    -Path $targetOU.DistinguishedName `
-                    -ScriptPath $loginScript `
-                    -HomeDirectory $homeDir `
-                    -HomeDrive "H:" `
-                    -ErrorAction Stop
+        $infoConfig = $mapaConfig[$base]
 
-                # 1. Asignar grupo específico del CSV
-                Add-ADGroupMember -Identity $grupoCSV -Members $samAccountName
-                Write-Host "[+] Grupo: $grupoCSV" -ForegroundColor Gray
+        if ($infoConfig) {
+            $ouName = $infoConfig.OU
+            # Definimos la ruta de la carpeta personal
+            $homeDirectoryPath = Join-Path $basePath "$($infoConfig.RelPath)\$u"
+            $targetOU = Get-ADOrganizationalUnit -Filter "Name -eq '$ouName'"
 
-                # 2. Asignar a G-EMPLEADOS si es de Ventas, Contabilidad o RRHH
-                if ($ouName -in @("VENTAS", "CONTABILIDAD", "RRHH")) {
-                    Add-ADGroupMember -Identity $grupoEmpleados -Members $samAccountName
-                    Write-Host "[+] Grupo: $grupoEmpleados" -ForegroundColor Yellow
+            if ($targetOU) {
+                try {
+                    Write-Host "`nPROCESANDO: $u ($n $a)" -ForegroundColor Cyan
+                    
+                    # --- A. Parámetros del Usuario ---
+                    $userParams = @{
+                        Name                  = "$n $a"
+                        SamAccountName        = $u
+                        GivenName             = $n
+                        Surname               = $a
+                        Path                  = $targetOU.DistinguishedName
+                        Enabled               = $true
+                        AccountPassword       = $password
+                        ChangePasswordAtLogon = $true
+                        HomeDrive             = "H:"
+                        HomeDirectory         = $homeDirectoryPath
+                        ScriptPath            = $loginScript
+                        ErrorAction           = "Stop"
+                    }
+
+                    # Añadir Perfil Móvil si es Jefe
+                    if ($infoConfig.EsJefe) {
+                        $pPath = "$profileServer\$u"
+                        $userParams.Add("ProfilePath", $pPath)
+                        Write-Host "  [i] Perfil móvil activado." -ForegroundColor Gray
+                    }
+
+                    # --- B. Crear Usuario en Active Directory ---
+                    New-ADUser @userParams
+                    Write-Host "  [OK] Usuario creado en AD." -ForegroundColor Green
+
+                    # --- C. Agregar al Grupo ---
+                    Add-ADGroupMember -Identity $g -Members $u
+                    Write-Host "  [OK] Agregado al grupo: $g" -ForegroundColor Green
+
+                    # --- D. Creación de Carpeta Física y Permisos ---
+                    if (-not (Test-Path $homeDirectoryPath)) {
+                        # Crear la carpeta físicamente
+                        New-Item -Path $homeDirectoryPath -ItemType Directory -Force | Out-Null
+                        Write-Host "  [OK] Carpeta física creada en $homeDirectoryPath" -ForegroundColor Green
+                    }
+
+                    # Configuración de Seguridad NTFS con ICACLS
+                    # 1. Deshabilitar herencia (D)
+                    icacls $homeDirectoryPath /inheritance:d /Q
+                    # 2. Eliminar permisos de usuarios genéricos
+                    icacls $homeDirectoryPath /remove "Users" /Q
+                    # 3. Dar Control Total (F) al usuario de forma recursiva (OI)(CI)
+                    icacls $homeDirectoryPath /grant "${u}:(OI)(CI)F" /Q
+                    # 4. Asignar al usuario como Propietario (Owner)
+                    icacls $homeDirectoryPath /setowner $u /T /C /L /Q
+                    
+                    Write-Host "  [OK] Permisos y Propiedad (Owner) asignados a $u." -ForegroundColor Green
+                    
                 }
-
-                # 3. Asignar a grupo general
-                Add-ADGroupMember -Identity $grupoGeneral -Members $samAccountName
-                Write-Host "[+] Grupo: $grupoGeneral" -ForegroundColor Gray
-                
-                Write-Host "¡Éxito: $samAccountName creado correctamente!" -ForegroundColor Green
+                catch {
+                    Write-Error "  [ERROR] No se pudo procesar a $u : $($_.Exception.Message)"
+                }
             }
-            catch {
-                Write-Warning "Error al crear a $samAccountName : $($_.Exception.Message)"
+            else {
+                Write-Warning "  [!] No se encontró la OU: $ouName"
             }
         }
         else {
-            Write-Error "No se encontró la OU: $ouName para el usuario $samAccountName"
+            Write-Warning "  [!] Sin mapeo para UsuarioBase: $base"
         }
     }
-    else {
-        Write-Warning "El grupo '$grupoCSV' del usuario $samAccountName no tiene mapeo definido."
-    }
 }
+else {
+    Write-Error "No se encontró el archivo CSV en $csvPath"
+}
+
+Write-Host "`n--- Proceso Finalizado ---" -ForegroundColor White
